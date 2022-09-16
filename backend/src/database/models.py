@@ -2,6 +2,8 @@ import os
 from sqlalchemy import Column, String, Integer
 from flask_sqlalchemy import SQLAlchemy
 import json
+from marshmallow import Schema, fields, validate
+from flask_migrate import Migrate
 
 database_filename = "database.db"
 project_dir = os.path.dirname(os.path.abspath(__file__))
@@ -18,8 +20,10 @@ setup_db(app)
 def setup_db(app):
     app.config["SQLALCHEMY_DATABASE_URI"] = database_path
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    app.config['JSON_SORT_KEYS'] = False
     db.app = app
     db.init_app(app)
+    migrate = Migrate(app, db)
 
 
 '''
@@ -48,10 +52,29 @@ Drink
 a persistent drink entity, extends the base SQLAlchemy Model
 '''
 
+class RecipeSchema(Schema):
+    color = fields.String(required=True,
+                            allow_none=False,
+                            validate=validate.Length(min=1))
+    name = fields.String(required=True,
+                             allow_none=False,
+                             validate=validate.Length(min=1))
+    parts = fields.Integer(required=True,
+                             allow_none=False,
+                             validate=validate.Range(min=1))
+
+
+class DrinkSchema(Schema):
+    title = fields.String(required=True,
+                             allow_none=False,
+                             validate=validate.Length(min=1))
+    recipe = fields.List(fields.Nested(RecipeSchema))
+
+    
 
 class Drink(db.Model):
     # Autoincrementing, unique primary key
-    id = Column(Integer().with_variant(Integer, "sqlite"), primary_key=True)
+    id = Column(Integer().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
     # String Title
     title = Column(String(80), unique=True)
     # the ingredients blob - this stores a lazy json blob
@@ -64,7 +87,7 @@ class Drink(db.Model):
     '''
 
     def short(self):
-        print(json.loads(self.recipe))
+        #print(json.loads(self.recipe))
         short_recipe = [{'color': r['color'], 'parts': r['parts']} for r in json.loads(self.recipe)]
         return {
             'id': self.id,
