@@ -68,9 +68,8 @@ class DrinkSchema(Schema):
     title = fields.String(required=True,
                              allow_none=False,
                              validate=validate.Length(min=1))
-    recipe = fields.List(fields.Nested(RecipeSchema))
-
-    
+    recipe = fields.Nested(RecipeSchema, required=True)
+    #recipe = fields.List(fields.Nested(RecipeSchema))
 
 class Drink(db.Model):
     # Autoincrementing, unique primary key

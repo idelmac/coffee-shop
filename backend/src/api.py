@@ -1,4 +1,5 @@
 import os
+from urllib import response
 from flask import Flask, request, jsonify, abort
 from sqlalchemy import exc
 import json
@@ -6,12 +7,16 @@ from flask_cors import CORS
 from marshmallow import ValidationError
 import sys
 
-from .database.models import db_drop_and_create_all, setup_db, Drink, DrinkSchema,RecipeSchema
-from .auth.auth import AuthError, requires_auth
+from .database.models import db_drop_and_create_all, setup_db, Drink, DrinkSchema, RecipeSchema
+from .auth.auth import AuthError, check_permissions, requires_auth
 
 app = Flask(__name__)
 setup_db(app)
 CORS(app)
+
+AUTH0_DOMAIN = 'idelmac.us.auth0.com'
+ALGORITHMS = ['RS256']
+API_AUDIENCE = 'coffee-shop'
 
 '''
 @TODO uncomment the following line to initialize the datbase
@@ -21,12 +26,11 @@ CORS(app)
 '''
 db_drop_and_create_all()
 
-@app.route('/')
-def get_categories():
-    return jsonify({
-        "success": True,
-        "status": 200
-    })
+@app.route('/headers')
+@requires_auth('post:drinks')
+def headers(jwt):
+    print(jwt)
+    return 'not implemented'
 
 def format_drinks_short(drinks):
     formated_drinks = []
@@ -74,7 +78,8 @@ def get_drinks():
         or appropriate status code indicating reason for failure
 '''
 @app.route('/drinks-detail')
-def get_drinks_detail():
+@requires_auth('get:drinks-detail')
+def get_drinks_detail(payload):
     drinks = Drink.query.order_by(Drink.id).all()
     formated_drinks = []
     
@@ -99,7 +104,8 @@ def get_drinks_detail():
         or appropriate status code indicating reason for failure
 '''
 @app.route("/drinks", methods=["POST"])
-def create_drink():
+@requires_auth('post:drinks')
+def create_drink(payload):
     body = request.get_json()
     try:
         schema = DrinkSchema()
@@ -109,7 +115,7 @@ def create_drink():
 
     title = body.get("title", None)
     recipe = body.get("recipe", None)
-
+    print(recipe)
     sameDrink = Drink.query.filter(
         Drink.title.ilike(f'%{title}%')
         ).order_by(Drink.id).all()
@@ -118,7 +124,7 @@ def create_drink():
         abort(409, "duplicated drink")
 
     try:
-        drink = Drink(title=title,recipe=json.dumps(recipe))
+        drink = Drink(title=title, recipe=json.dumps(recipe))
         drink.insert()
 
         new_drink = Drink.query.filter(Drink.title==title).order_by(Drink.id).all()
@@ -133,7 +139,6 @@ def create_drink():
         print(sys.exc_info())
         abort(422)
 
-
 '''
 @TODO implement endpoint
     PATCH /drinks/<id>
@@ -146,7 +151,8 @@ def create_drink():
         or appropriate status code indicating reason for failure
 '''
 @app.route("/drinks/<int:drink_id>", methods=["PATCH"])
-def update_drink(drink_id):
+@requires_auth('patch:drinks')
+def update_drink(payload, drink_id):
     drink = Drink.query.filter(
             Drink.id == drink_id
             ).one_or_none()
@@ -175,7 +181,7 @@ def update_drink(drink_id):
         return jsonify({
             "sucess": True,
             "status": 200,
-            "drink": formated_drink
+            "drinks": formated_drink
         })
     except Exception:
         print(sys.exc_info())
@@ -192,7 +198,8 @@ def update_drink(drink_id):
         or appropriate status code indicating reason for failure
 '''
 @app.route('/drinks/<int:drink_id>', methods=['DELETE'])
-def delete_question(drink_id):
+@requires_auth('delete:drinks')
+def delete_question(payload, drink_id):
     drink = Drink.query.filter(
         Drink.id == drink_id
         ).one_or_none()
@@ -269,3 +276,9 @@ def unprocessable(error):
 @TODO implement error handler for AuthError
     error handler should conform to general task above
 '''
+@app.errorhandler(AuthError)
+def auth_error(error):
+    response = jsonify(error.error)
+    response.status_code = error.status_code
+    
+    return response
